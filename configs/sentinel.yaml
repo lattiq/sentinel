@@ -1,0 +1,137 @@
+client:
+  id: "${SENTINEL_CLIENT_ID}"
+  name: "${SENTINEL_CLIENT_NAME}"
+  environment: "${SENTINEL_ENVIRONMENT:-production}"
+
+hub:
+  endpoint: "https://hub.lattiq.com/sentinel/api/v1/events/batch"
+  secret_key: "${SENTINEL_SECRET_KEY}"
+  client_id: "101"
+  timeout: 30s
+  compression: true
+
+data_sources:
+  query_logs:
+    enabled: false
+    log_group: "/aws/rds/instance/${RDS_INSTANCE_NAME}/postgresql"
+    stream_names: []
+    filter_pattern: ""
+    poll_interval: 30s
+    batch_size: 100
+    start_time: "latest"
+    log_format:
+      log_line_prefix: "%t:%r:%u@%d:[%p]:"  # Your PostgreSQL log_line_prefix setting
+      auto_detect: true                     # Try to auto-detect format if prefix parsing fails
+      cloudwatch_prefix: true               # CloudWatch adds timestamp prefix
+      log_level_prefix: true                # PostgreSQL adds LOG:, ERROR:, etc.
+    
+  rds:
+    enabled: false
+    instances:
+      - "${RDS_INSTANCE_NAME}"
+    monitor_all_instances: false
+    region: "${AWS_REGION:-us-east-1}"
+    poll_intervals:
+      instances: 15m
+      config: 30m
+      snapshots: 30m
+      
+  cloudtrail:
+    enabled: false
+    s3_bucket: "${CLOUDTRAIL_S3_BUCKET}"
+    s3_prefix: "AWSLogs/${AWS_ACCOUNT_ID}/CloudTrail/${AWS_REGION}/"
+    stream_name: ""
+    event_names:
+      - "CreateDBSnapshot"
+      - "RestoreDBInstanceFromDBSnapshot"
+      - "RestoreDBInstanceToPointInTime"
+      - "CreateDBInstanceReadReplica"
+      - "DeleteDBSnapshot"
+      - "ModifyDBInstance"
+    poll_interval: 5m
+    lookback_time: 15m
+
+features:
+  tables:
+    # Real LattIQ tables based on actual usage
+    datasets:
+      database: "studio"
+      schema: "public"
+      lattiq_columns:
+        - "status"
+        - "details"
+      primary_key:
+        - "id"
+      description: "Datasets table with LattIQ features"
+        
+    job_monitor_records:
+      database: "studio"
+      schema: "public"
+      lattiq_columns:
+        - "version"
+        - "status"
+      primary_key:
+        - "id"
+      description: "Job monitor records with LattIQ features"
+    
+    # Example feature mapping - customize for your use case
+    customers:
+      database: "database"
+      schema: "public"
+      lattiq_columns:
+        - "risk_score"
+        - "churn_probability"
+        - "fraud_indicator"
+        - "lifetime_value_score"
+      primary_key:
+        - "customer_id"
+      description: "Customer master table with LattIQ ML features"
+      
+    transactions:
+      database: "database"
+      schema: "public"
+      lattiq_columns:
+        - "anomaly_score"
+        - "risk_category"
+      primary_key:
+        - "transaction_id"
+      description: "Transaction table with LattIQ risk features"
+
+batch:
+  max_size: 100
+  max_age: 30s
+  compression: true
+  max_payload_size_mb: 10
+
+retry:
+  max_retries: 3
+  initial_delay: 1s
+  max_delay: 30s
+  backoff_factor: 2.0
+  retryable_errors:
+    - "TIMEOUT"
+    - "CONNECTION_ERROR"
+    - "SERVER_ERROR"
+    - "RATE_LIMITED"
+
+health:
+  enabled: true
+  report_interval: 5m
+  metric_retention: 24h
+  thresholds:
+    memory_mb: 512
+    cpu_percent: 80.0
+    error_percent: 5.0
+    disk_mb: 1024
+
+logging:
+  level: "${SENTINEL_LOG_LEVEL:-info}"
+  format: "json"
+  file: "/var/log/sentinel/agent.log"
+  max_size_mb: 100
+  max_backups: 5
+  max_age_days: 7
+
+aws:
+  region: "${AWS_REGION:-us-east-1}"
+  profile: "${AWS_PROFILE:-default}"
