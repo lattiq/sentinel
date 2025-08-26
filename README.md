@@ -16,45 +16,60 @@
 LattIQ partners with enterprise-grade data publishers, including regulated entities, for responsible data procurement. These organizations have strict compliance obligations, particularly with emerging privacy regulations such as India’s Digital Personal Data Protection Act (DPDPA). LattIQ upholds this accountability by ensuring complete transparency between collaborating parties and enforcing strict purpose-limitation on data usage to prevent abuse. **Sentinel** ensures compliance, monitors
 usage patterns, and provides real-time visibility into how data is being accessed and utilized.
 
+### Core Purpose
+
+Sentinel operates within your infrastructure to monitor:
+
+- Database query logs for data access patterns
+- Infrastructure events (backups, snapshots, replications)
+- Object/File-based data access in cloud storage (S3, Azure Blob, GCS)
+- System health and compliance metrics
+
 > **Critical**: Sentinel monitors _metadata and access patterns only_ - it never accesses, stores, or transmits your actual business data.
 
 ## 🏢 Architecture Overview
 
 ```mermaid
-graph TB
-    subgraph "Partner Infrastructure (AWS)"
-        subgraph "Data Sources"
-            subgraph DB["Database Monitoring"]
-                QUERY["PostgreSQL Query Logs<br/>RDS/Aurora Instances"]
-                LOGSTORE["CloudWatch Logs<br/>Real-time Log Streaming"]
-                META["RDS Metadata<br/>Instances, Clusters, Snapshots"]
+%%{init: {'theme': 'neutral', 'themeVariables': {'darkMode': true}, "flowchart" : {'nodeSpacing': 60, 'rankSpacing': 60, 'curve': 'basis'} } }%%
+graph TD
+    subgraph PI["**Partner Infrastructure**"]
+        subgraph DS["**Data Sources**"]
+            subgraph DB["**Database Monitoring**"]
+                QUERY["**Database Query Logs**<br/>// PostgreSQL Logs<br/>// MySQL Logs<br/>// SQL Server Audit Logs"]
+                LOGSTORE["**Logs Store**<br/>// AWS :: Cloudwatch<br/>// AZURE :: Monitor Logs<br/>// GCP :: Logs Explorer<br/>// OnPremise :: File"]
+                META["**Database Metadata**<br/>Describe DB Instance/ Cluster/ Backups/ Snapshots"]
             end
-            subgraph STORAGE["Storage Monitoring"]
-                S3["S3 Access Patterns<br/>File-based Data Monitoring"]
-                CLOUDTRAIL["CloudTrail Events<br/>Infrastructure Operations"]
+            subgraph OBJECTS["**Object Storage Monitoring**"]
+                ACCESS_EVENTS["**Object Access Events**
+                // AWS :: S3 CloudTrail
+                // Azure :: ABS Activity Logs
+                // GCP :: GCS Cloud Audit"]
             end
         end
-        subgraph AGENT["Sentinel Agent"]
-            COLLECTORS["Data Collectors<br/>• Query Logs<br/>• RDS Events<br/>• CloudTrail/S3<br/>• Health Monitor"]
-            PARSER["Parser & Analyzer<br/>• SQL Pattern Detection<br/>• Risk Scoring<br/>• Anomaly Detection"]
-            PROCESSOR["Event Processor<br/>• Batching<br/>• Validation<br/>• Filtering"]
-            TRANSMITTER["Secure Transmitter<br/>• HMAC Authentication<br/>• TLS Encryption<br/>• Retry Logic"]
+        subgraph AGENT["**Sentinel Agent**"]
+            COLLECTORS[**Data Collectors**<br/>• Query Logs<br/>• DB Events<br/>• CloudTrail/Storage Events<br/>• Agent Health Monitor]
+            PARSER[**Parser & Analyzer**<br/>• SQL Pattern Detection<br/>• Risk Scoring<br/>• Anomaly Detection]
+            PROCESSOR[**Event Processor**<br/>• Batching<br/>• Validation<br/>• Filtering]
+            TRANSMITTER[**Secure Transmitter**<br/>• HMAC Authentication<br/>• TLS Encryption<br/>• Retry Logic]
         end
     end
-    subgraph "LattIQ Infrastructure"
-        WATCHTOWER["LattIQ Watchtower<br/>Enterprise Monitoring Platform"]
+    subgraph LI["**LattIQ Infrastructure**"]
+        WATCHTOWER[**Watchtower**<br/>Central Monitoring Platform]
     end
     QUERY --> LOGSTORE
     LOGSTORE --> COLLECTORS
     META --> COLLECTORS
-    S3 --> COLLECTORS
-    CLOUDTRAIL --> COLLECTORS
+    OBJECTS --> COLLECTORS
     COLLECTORS --> PARSER
     PARSER --> PROCESSOR
     PROCESSOR --> TRANSMITTER
     TRANSMITTER -->|HTTPS + HMAC| WATCHTOWER
     style DB fill:#e3f2fd
-    style STORAGE fill:#fcf6eb
+    style QUERY fill:#8ca8bd
+    style LOGSTORE fill:#8ca8bd
+    style META fill:#8ca8bd
+    style OBJECTS fill:#fcf6eb
+    style ACCESS_EVENTS fill:#c2b299
     style AGENT fill:#e3fff1
     style TRANSMITTER fill:#8dbaa3
     style WATCHTOWER fill:#8dbaa3
@@ -333,7 +348,6 @@ go vet ./...
 
 - **Complete AWS Integration**: Production-ready monitoring for RDS, Aurora, S3, CloudTrail
 - **Real-time Processing**: Sub-second query analysis and alerting
-- **Enterprise Scale**: Battle-tested for high-volume production environments
 - **Compliance Ready**: Built for regulated industries and privacy requirements
 - **Multi-tenant Architecture**: Supports multiple client deployments
 - **Professional Support**: Dedicated technical support and customization
