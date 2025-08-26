@@ -8,7 +8,7 @@ import (
 var (
 	// Version components - update these for releases
 	Major = 0
-	Minor = 1
+	Minor = 2
 	Patch = 0
 
 	// Build information - can be set via ldflags during build
