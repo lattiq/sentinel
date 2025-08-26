@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"path"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -250,39 +251,39 @@ func (c *S3HealthChecker) Check(ctx context.Context) *sentinelTypes.HealthEvent 
 	}
 }
 
-// HubHealthChecker monitors Hub service health
-type HubHealthChecker struct {
+// WatchtowerHealthChecker monitors Watchtower service health
+type WatchtowerHealthChecker struct {
 	config *config.Config
 	client *http.Client
 }
 
-// NewHubHealthChecker creates a new Hub health checker
-func NewHubHealthChecker(cfg *config.Config) *HubHealthChecker {
-	return &HubHealthChecker{
+// NewWatchtowerHealthChecker creates a new Watchtower health checker
+func NewWatchtowerHealthChecker(cfg *config.Config) *WatchtowerHealthChecker {
+	return &WatchtowerHealthChecker{
 		config: cfg,
 		client: &http.Client{
-			Timeout: cfg.Hub.Timeout,
+			Timeout: cfg.Watchtower.Timeout,
 		},
 	}
 }
 
 // Name returns the checker name
-func (c *HubHealthChecker) Name() string {
-	return "hub"
+func (c *WatchtowerHealthChecker) Name() string {
+	return "watchtower"
 }
 
-// Check performs Hub health check
-func (c *HubHealthChecker) Check(ctx context.Context) *sentinelTypes.HealthEvent {
+// Check performs Watchtower health check
+func (c *WatchtowerHealthChecker) Check(ctx context.Context) *sentinelTypes.HealthEvent {
 	startTime := time.Now()
 	status := "healthy"
 	var lastError string
 	var errorCount int64
 
-	// Test Hub connectivity
-	endpoint := c.config.Hub.Endpoint
+	// Test Watchtower connectivity
+	endpoint := c.config.Watchtower.Endpoint
 	if endpoint != "" {
 		// Create a simple GET request to check connectivity
-		req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", path.Join(endpoint, "/watchtower/health"), nil)
 		if err != nil {
 			status = "unhealthy"
 			lastError = fmt.Sprintf("Failed to create request: %v", err)
@@ -291,7 +292,7 @@ func (c *HubHealthChecker) Check(ctx context.Context) *sentinelTypes.HealthEvent
 			resp, err := c.client.Do(req)
 			if err != nil {
 				status = "degraded"
-				lastError = fmt.Sprintf("Failed to connect to hub: %v", err)
+				lastError = fmt.Sprintf("Failed to connect to watchtower: %v", err)
 				errorCount++
 			} else {
 				resp.Body.Close()
@@ -299,14 +300,14 @@ func (c *HubHealthChecker) Check(ctx context.Context) *sentinelTypes.HealthEvent
 				// The actual health check would depend on specific endpoint behavior
 				if resp.StatusCode >= 500 {
 					status = "degraded"
-					lastError = fmt.Sprintf("Hub returned server error: %d", resp.StatusCode)
+					lastError = fmt.Sprintf("Watchtower returned server error: %d", resp.StatusCode)
 					errorCount++
 				}
 			}
 		}
 	} else {
 		status = "unknown"
-		lastError = "No hub endpoint configured"
+		lastError = "No watchtower endpoint configured"
 	}
 
 	// Additional metrics
@@ -314,12 +315,12 @@ func (c *HubHealthChecker) Check(ctx context.Context) *sentinelTypes.HealthEvent
 		"response_time_ms": time.Since(startTime).Milliseconds(),
 		"endpoint":         endpoint,
 		"client_id":        c.config.Client.ID,
-		"timeout":          c.config.Hub.Timeout.String(),
-		"compression":      c.config.Hub.Compression,
+		"timeout":          c.config.Watchtower.Timeout.String(),
+		"compression":      c.config.Watchtower.Compression,
 	}
 
 	return &sentinelTypes.HealthEvent{
-		ComponentName: "hub",
+		ComponentName: "watchtower",
 		Status:        status,
 		Timestamp:     time.Now().Unix(),
 		UptimeSeconds: int64(time.Since(startTime).Seconds()),

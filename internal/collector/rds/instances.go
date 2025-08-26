@@ -350,6 +350,11 @@ func (c *InstancesCollector) processInstance(instance types.DBInstance) *sentine
 		hasChanges = true
 	}
 
+	// Check for engine version changes
+	if aws.ToString(lastInstance.EngineVersion) != aws.ToString(instance.EngineVersion) {
+		hasChanges = true
+	}
+
 	// Only generate event if there are significant changes
 	if !hasChanges {
 		return nil

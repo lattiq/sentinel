@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lattiq/sentinel/internal/hmac"
 	"gopkg.in/yaml.v3"
 )
 
@@ -21,7 +22,7 @@ type Config struct {
 	Health      HealthConfig      `yaml:"health"`
 	Logging     LoggingConfig     `yaml:"logging"`
 	AWS         AWSConfig         `yaml:"aws"`
-	Hub         HubConfig         `yaml:"hub"`
+	Watchtower  WatchtowerConfig  `yaml:"watchtower"`
 }
 
 // ClientConfig represents client identification
@@ -63,6 +64,8 @@ type RDSConfig struct {
 	Enabled             bool          `yaml:"enabled"`
 	Instances           []string      `yaml:"instances"`
 	MonitorAllInstances bool          `yaml:"monitor_all_instances"`
+	Clusters            []string      `yaml:"clusters"`
+	MonitorAllClusters  bool          `yaml:"monitor_all_clusters"`
 	Region              string        `yaml:"region"`
 	PollIntervals       PollIntervals `yaml:"poll_intervals"`
 }
@@ -70,6 +73,7 @@ type RDSConfig struct {
 // PollIntervals represents different polling intervals for RDS
 type PollIntervals struct {
 	Instances time.Duration `yaml:"instances"`
+	Clusters  time.Duration `yaml:"clusters"`
 	Config    time.Duration `yaml:"config"`
 	Snapshots time.Duration `yaml:"snapshots"`
 }
@@ -148,13 +152,13 @@ type AWSConfig struct {
 	Profile string `yaml:"profile"`
 }
 
-// HubConfig defines LattIQ Hub configuration
-type HubConfig struct {
-	Endpoint    string        `yaml:"endpoint" env:"HUB_ENDPOINT"`
-	SecretKey   string        `yaml:"secret_key" env:"HUB_SECRET_KEY"`
-	ClientID    string        `yaml:"client_id" env:"HUB_CLIENT_ID"`
-	Timeout     time.Duration `yaml:"timeout" env:"HUB_TIMEOUT" default:"30s"`
-	Compression bool          `yaml:"compression" env:"HUB_COMPRESSION" default:"true"`
+// WatchtowerConfig defines LattIQ Watchtower configuration
+type WatchtowerConfig struct {
+	Endpoint    string        `yaml:"endpoint" env:"WATCHTOWER_ENDPOINT"`
+	ClientID    string        `yaml:"client_id" env:"WATCHTOWER_CLIENT_ID"`
+	Timeout     time.Duration `yaml:"timeout" env:"WATCHTOWER_TIMEOUT" default:"30s"`
+	Compression bool          `yaml:"compression" env:"WATCHTOWER_COMPRESSION" default:"false"`
+	HMAC        hmac.Config   `yaml:"hmac"`
 }
 
 // DefaultConfig returns a default configuration
@@ -180,6 +184,7 @@ func DefaultConfig() *Config {
 				Enabled: true,
 				PollIntervals: PollIntervals{
 					Instances: 15 * time.Minute,
+					Clusters:  15 * time.Minute,
 					Config:    30 * time.Minute,
 					Snapshots: 30 * time.Minute,
 				},
@@ -190,10 +195,24 @@ func DefaultConfig() *Config {
 				LookbackTime: 15 * time.Minute,
 				EventNames: []string{
 					"CreateDBSnapshot",
+					"CopyDBSnapshot",
+					"ModifyDBSnapshotAttribute",
 					"RestoreDBInstanceFromDBSnapshot",
 					"RestoreDBInstanceToPointInTime",
 					"CreateDBInstanceReadReplica",
 					"ModifyDBInstance",
+					"CreateDBCluster",
+					"ModifyDBCluster",
+					"DeleteDBCluster",
+					"CreateDBClusterSnapshot",
+					"CopyDBClusterSnapshot",
+					"ModifyDBClusterSnapshotAttribute",
+					"RestoreDBClusterFromSnapshot",
+					"RestoreDBClusterToPointInTime",
+					"CreateDBClusterReadReplica",
+					"PromoteReadReplica",
+					"StartExportTask",
+					"CreateGlobalCluster",
 				},
 			},
 		},
@@ -233,12 +252,18 @@ func DefaultConfig() *Config {
 			MaxBackups: 5,
 			MaxAge:     7,
 		},
-		Hub: HubConfig{
-			Endpoint:    "https://hub.lattiq.com",
-			SecretKey:   "your-secret-key",
+		Watchtower: WatchtowerConfig{
+			Endpoint:    "https://api.lattiq.com",
 			ClientID:    "your-client-id",
 			Timeout:     30 * time.Second,
 			Compression: true,
+			HMAC: hmac.Config{
+				SecretKey:       "your-secret-key",
+				Algorithm:       "sha256",
+				HeaderName:      "X-Signature",
+				TimestampHeader: "X-Timestamp",
+				AuthWindow:      "5m",
+			},
 		},
 	}
 }
@@ -370,8 +395,8 @@ func (c *Config) DetectChanges(previousConfig *Config, previousHash string) ([]s
 	if !configSectionsEqual(c.AWS, previousConfig.AWS) {
 		changedSections = append(changedSections, "aws")
 	}
-	if !configSectionsEqual(c.Hub, previousConfig.Hub) {
-		changedSections = append(changedSections, "hub")
+	if !configSectionsEqual(c.Watchtower, previousConfig.Watchtower) {
+		changedSections = append(changedSections, "watchtower")
 	}
 
 	return changedSections, nil

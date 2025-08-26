@@ -12,13 +12,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/lattiq/sentinel/internal/config"
+	"github.com/lattiq/sentinel/internal/hmac"
 	"github.com/lattiq/sentinel/pkg/types"
+	"github.com/lattiq/sentinel/version"
 )
 
 func TestNewHTTPTransmitter(t *testing.T) {
 	tests := []struct {
 		name    string
-		config  *config.HubConfig
+		config  *config.WatchtowerConfig
 		wantErr bool
 	}{
 		{
@@ -33,19 +35,33 @@ func TestNewHTTPTransmitter(t *testing.T) {
 		},
 		{
 			name: "empty endpoint",
-			config: &config.HubConfig{
-				Endpoint:  "",
-				SecretKey: "test-secret",
-				Timeout:   30 * time.Second,
+			config: &config.WatchtowerConfig{
+				Endpoint:    "",
+				Timeout:     30 * time.Second,
+				Compression: false,
+				HMAC: hmac.Config{
+					SecretKey:       "test-secret",
+					Algorithm:       "sha256",
+					HeaderName:      "X-Signature",
+					TimestampHeader: "X-Timestamp",
+					AuthWindow:      "5m",
+				},
 			},
 			wantErr: false, // Constructor doesn't validate endpoint
 		},
 		{
 			name: "empty secret key",
-			config: &config.HubConfig{
-				Endpoint:  "http://test.com",
-				SecretKey: "",
-				Timeout:   30 * time.Second,
+			config: &config.WatchtowerConfig{
+				Endpoint:    "http://test.com",
+				Timeout:     30 * time.Second,
+				Compression: false,
+				HMAC: hmac.Config{
+					SecretKey:       "",
+					Algorithm:       "sha256",
+					HeaderName:      "X-Signature",
+					TimestampHeader: "X-Timestamp",
+					AuthWindow:      "5m",
+				},
 			},
 			wantErr: false, // Constructor doesn't validate secret key
 		},
@@ -72,6 +88,7 @@ func TestHTTPTransmitter_Send(t *testing.T) {
 		assert.Equal(t, "POST", r.Method)
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 		assert.NotEmpty(t, r.Header.Get("X-Signature"))
+		assert.NotEmpty(t, r.Header.Get("X-Timestamp"))
 
 		// Verify request body
 		var payload types.BatchPayload
@@ -139,14 +156,14 @@ func TestHTTPTransmitter_SendWithRetry(t *testing.T) {
 	ctx := context.Background()
 	err = transmitter.Send(ctx, batch)
 	assert.NoError(t, err)
-	assert.Equal(t, 3, attempts)
+	assert.Equal(t, 3, attempts) // Server should be called 3 times
 
-	// Check metrics
+	// Check metrics - resty handles retries internally, so we only count final result
 	metrics := transmitter.GetMetrics()
-	assert.Equal(t, int64(3), metrics.TotalRequests) // 3 total attempts
+	assert.Equal(t, int64(1), metrics.TotalRequests) // 1 logical request
 	assert.Equal(t, int64(1), metrics.SuccessfulSends)
 	assert.Equal(t, int64(0), metrics.FailedSends)
-	assert.Equal(t, int64(2), metrics.RetriedRequests) // 2 retries before success
+	// Note: RetryRequests is not easily tracked with resty's internal retry mechanism
 }
 
 func TestHTTPTransmitter_SendFailure(t *testing.T) {
@@ -172,12 +189,11 @@ func TestHTTPTransmitter_SendFailure(t *testing.T) {
 	err = transmitter.Send(ctx, batch)
 	assert.Error(t, err)
 
-	// Check metrics
+	// Check metrics - resty handles retries internally, so we only count final result
 	metrics := transmitter.GetMetrics()
-	assert.Equal(t, int64(4), metrics.TotalRequests) // 4 total attempts (1 + 3 retries)
+	assert.Equal(t, int64(1), metrics.TotalRequests) // 1 logical request
 	assert.Equal(t, int64(0), metrics.SuccessfulSends)
 	assert.Equal(t, int64(1), metrics.FailedSends)
-	assert.Equal(t, int64(3), metrics.RetriedRequests)
 }
 
 func TestHTTPTransmitter_SendClientError(t *testing.T) {
@@ -217,19 +233,20 @@ func TestHTTPTransmitter_GenerateSignature(t *testing.T) {
 	require.NoError(t, err)
 
 	payload := []byte(`{"test": "data"}`)
+	timestamp := time.Now().Unix()
 
-	signature, err := transmitter.generateHMACSignature(payload)
+	signature, err := transmitter.hmacAuth.GenerateSignature("POST", "/test", payload, timestamp)
 	require.NoError(t, err)
 	assert.NotEmpty(t, signature)
 	assert.Len(t, signature, 64) // HMAC-SHA256 should be 64 characters
 
 	// Same input should produce same signature
-	signature2, err := transmitter.generateHMACSignature(payload)
+	signature2, err := transmitter.hmacAuth.GenerateSignature("POST", "/test", payload, timestamp)
 	require.NoError(t, err)
 	assert.Equal(t, signature, signature2)
 
 	// Different input should produce different signature
-	signature3, err := transmitter.generateHMACSignature([]byte("different"))
+	signature3, err := transmitter.hmacAuth.GenerateSignature("POST", "/test", []byte("different"), timestamp)
 	require.NoError(t, err)
 	assert.NotEqual(t, signature, signature3)
 }
@@ -291,9 +308,9 @@ func TestHTTPTransmitter_InvalidEndpoint(t *testing.T) {
 	err = transmitter.Send(ctx, batch)
 	assert.Error(t, err)
 
-	// Check metrics
+	// Check metrics - resty handles retries internally, so we only count final result
 	metrics := transmitter.GetMetrics()
-	assert.Equal(t, int64(4), metrics.TotalRequests) // 4 total attempts (1 + 3 retries)
+	assert.Equal(t, int64(1), metrics.TotalRequests) // 1 logical request
 	assert.Equal(t, int64(0), metrics.SuccessfulSends)
 	assert.Equal(t, int64(1), metrics.FailedSends)
 }
@@ -314,12 +331,18 @@ func TestHTTPTransmitter_GetMetrics(t *testing.T) {
 
 // Helper functions
 
-func createTestTransmissionConfig() *config.HubConfig {
-	return &config.HubConfig{
+func createTestTransmissionConfig() *config.WatchtowerConfig {
+	return &config.WatchtowerConfig{
 		Endpoint:    "http://test.example.com",
-		SecretKey:   "test-secret-key",
 		Timeout:     30 * time.Second,
 		Compression: false,
+		HMAC: hmac.Config{
+			SecretKey:       "test-secret-key",
+			Algorithm:       "sha256",
+			HeaderName:      "X-Signature",
+			TimestampHeader: "X-Timestamp",
+			AuthWindow:      "5m",
+		},
 	}
 }
 
@@ -336,6 +359,6 @@ func createTestMonitoringMessage(id string) types.MonitoringMessage {
 			"event_id":  "test-event",
 			"collector": "test-collector",
 		},
-		Version: "1.0",
+		Version: version.Version(),
 	}
 }

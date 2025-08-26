@@ -18,6 +18,7 @@ type MonitoringMessage struct {
 const (
 	MessageTypeQueryLogs    = "query_logs"
 	MessageTypeRDSInstances = "rds_instances"
+	MessageTypeRDSClusters  = "rds_clusters"
 	MessageTypeRDSConfig    = "rds_config"
 	MessageTypeRDSSnapshots = "rds_snapshots"
 	MessageTypeCloudTrail   = "cloudtrail"
@@ -98,6 +99,40 @@ type RDSInstanceEvent struct {
 	VpcId                      string   `json:"vpc_id"`
 	SubnetGroup                string   `json:"subnet_group"`
 	PubliclyAccessible         bool     `json:"publicly_accessible"`
+}
+
+// RDSClusterEvent represents Aurora cluster information
+type RDSClusterEvent struct {
+	ClusterID                  string   `json:"cluster_id"`
+	ClusterArn                 string   `json:"cluster_arn"`
+	Engine                     string   `json:"engine"`
+	EngineVersion              string   `json:"engine_version"`
+	EngineMode                 string   `json:"engine_mode"`
+	Status                     string   `json:"status"`
+	LastModified               int64    `json:"last_modified"`
+	DatabaseName               string   `json:"database_name"`
+	MasterUsername             string   `json:"master_username"`
+	Port                       int      `json:"port"`
+	AllocatedStorage           int      `json:"allocated_storage"`
+	StorageEncrypted           bool     `json:"storage_encrypted"`
+	KmsKeyId                   string   `json:"kms_key_id,omitempty"`
+	MultiAZ                    bool     `json:"multi_az"`
+	AvailabilityZones          []string `json:"availability_zones"`
+	ClusterMembers             []string `json:"cluster_members"`
+	ReaderEndpoint             string   `json:"reader_endpoint,omitempty"`
+	Endpoint                   string   `json:"endpoint,omitempty"`
+	BackupRetentionPeriod      int      `json:"backup_retention_period"`
+	PreferredBackupWindow      string   `json:"preferred_backup_window,omitempty"`
+	PreferredMaintenanceWindow string   `json:"preferred_maintenance_window,omitempty"`
+	VpcId                      string   `json:"vpc_id,omitempty"`
+	SubnetGroup                string   `json:"subnet_group,omitempty"`
+	PubliclyAccessible         bool     `json:"publicly_accessible"`
+	DeletionProtection         bool     `json:"deletion_protection"`
+	AutoMinorVersionUpgrade    bool     `json:"auto_minor_version_upgrade"`
+	ActivityStreamStatus       string   `json:"activity_stream_status,omitempty"`
+	ActivityStreamMode         string   `json:"activity_stream_mode,omitempty"`
+	BacktrackWindow            int      `json:"backtrack_window,omitempty"`
+	CloneGroupId               string   `json:"clone_group_id,omitempty"`
 }
 
 // RDSConfigEvent represents RDS configuration changes
@@ -266,6 +301,7 @@ type Event struct {
 	Data        interface{}       `json:"data"`
 	QueryLog    *QueryLogEvent    `json:"query_log,omitempty"`
 	RDSInstance *RDSInstanceEvent `json:"rds_instance,omitempty"`
+	RDSCluster  *RDSClusterEvent  `json:"rds_cluster,omitempty"`
 	RDSConfig   *RDSConfigEvent   `json:"rds_config,omitempty"`
 	RDSSnapshot *RDSSnapshotEvent `json:"rds_snapshot,omitempty"`
 	CloudTrail  *CloudTrailEvent  `json:"cloudtrail,omitempty"`

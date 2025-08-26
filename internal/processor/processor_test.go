@@ -10,6 +10,7 @@ import (
 
 	"github.com/lattiq/sentinel/internal/config"
 	"github.com/lattiq/sentinel/pkg/types"
+	"github.com/lattiq/sentinel/version"
 )
 
 func TestNew(t *testing.T) {
@@ -79,6 +80,14 @@ func TestEventProcessor_Process(t *testing.T) {
 			expectError:   false,
 		},
 		{
+			name: "rds cluster event",
+			events: []types.Event{
+				createTestRDSClusterEvent(),
+			},
+			expectedCount: 1,
+			expectError:   false,
+		},
+		{
 			name: "rds snapshot event",
 			events: []types.Event{
 				createTestRDSSnapshotEvent(),
@@ -123,9 +132,10 @@ func TestEventProcessor_Process(t *testing.T) {
 			events: []types.Event{
 				createTestQueryLogEvent(),
 				createTestRDSInstanceEvent(),
+				createTestRDSClusterEvent(),
 				createTestRDSSnapshotEvent(),
 			},
-			expectedCount: 3,
+			expectedCount: 4,
 			expectError:   false,
 		},
 		{
@@ -161,7 +171,7 @@ func TestEventProcessor_Process(t *testing.T) {
 					assert.NotEmpty(t, msg.MessageType)
 					assert.Equal(t, 1, msg.BatchSize)
 					assert.NotNil(t, msg.Data)
-					assert.Equal(t, "1.0", msg.Version)
+					assert.Equal(t, version.Version(), msg.Version)
 					assert.NotNil(t, msg.Metadata)
 				}
 			}
@@ -208,6 +218,35 @@ func TestEventProcessor_ProcessRDSInstanceEvent(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "test-instance", rdsData.InstanceID)
 	assert.Equal(t, "available", rdsData.Status)
+}
+
+func TestEventProcessor_ProcessRDSClusterEvent(t *testing.T) {
+	processor, err := New(createTestConfig())
+	require.NoError(t, err)
+
+	event := createTestRDSClusterEvent()
+	message, err := processor.processRDSClusterEvent(event)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, message)
+	assert.Equal(t, types.MessageTypeRDSClusters, message.MessageType)
+	assert.Equal(t, "test-client", message.ClientID)
+	assert.NotEmpty(t, message.MessageID)
+
+	// Verify metadata
+	assert.Equal(t, "test-source", message.Metadata["source"])
+	assert.Equal(t, "test-rds-cluster", message.Metadata["event_id"])
+	assert.Equal(t, "rds_clusters", message.Metadata["collector"])
+	assert.Equal(t, "test-cluster", message.Metadata["cluster_id"])
+	assert.Equal(t, "aurora-postgresql", message.Metadata["engine"])
+	assert.Equal(t, "available", message.Metadata["status"])
+
+	// Verify data structure
+	clusterData, ok := message.Data.(*types.RDSClusterEvent)
+	assert.True(t, ok)
+	assert.Equal(t, "test-cluster", clusterData.ClusterID)
+	assert.Equal(t, "aurora-postgresql", clusterData.Engine)
+	assert.Equal(t, "available", clusterData.Status)
 }
 
 func TestEventProcessor_ProcessRDSSnapshotEvent(t *testing.T) {
@@ -265,13 +304,13 @@ func TestEventProcessor_ProcessAgentHealthEvent(t *testing.T) {
 	msg := messages[0]
 	assert.Equal(t, types.MessageTypeAgentHealth, msg.MessageType)
 	assert.Equal(t, "agent_health", msg.Metadata["collector"])
-	assert.Equal(t, "1.0.0", msg.Metadata["agent_version"])
+	assert.Equal(t, version.Version(), msg.Metadata["agent_version"])
 	assert.Equal(t, "healthy", msg.Metadata["status"])
 
 	// Verify data structure
 	healthData, ok := msg.Data.(*types.AgentHealthEvent)
 	require.True(t, ok)
-	assert.Equal(t, "1.0.0", healthData.AgentVersion)
+	assert.Equal(t, version.Version(), healthData.AgentVersion)
 	assert.Equal(t, "healthy", healthData.Status)
 	assert.Equal(t, int64(3600), healthData.UptimeSeconds)
 	assert.Equal(t, int64(0), healthData.ErrorCount)
@@ -398,6 +437,36 @@ func createTestRDSInstanceEvent() types.Event {
 	}
 }
 
+func createTestRDSClusterEvent() types.Event {
+	return types.Event{
+		ID:        "test-rds-cluster",
+		Type:      types.EventTypeRDSCluster,
+		Timestamp: time.Now(),
+		Source:    "test-source",
+		RDSCluster: &types.RDSClusterEvent{
+			ClusterID:               "test-cluster",
+			ClusterArn:              "arn:aws:rds:us-east-1:123456789012:cluster:test-cluster",
+			Engine:                  "aurora-postgresql",
+			EngineVersion:           "13.7",
+			EngineMode:              "provisioned",
+			Status:                  "available",
+			LastModified:            time.Now().Unix(),
+			DatabaseName:            "postgres",
+			MasterUsername:          "postgres",
+			Port:                    5432,
+			AllocatedStorage:        100,
+			StorageEncrypted:        true,
+			KmsKeyId:                "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012",
+			MultiAZ:                 true,
+			AvailabilityZones:       []string{"us-east-1a", "us-east-1b"},
+			ClusterMembers:          []string{"test-cluster-instance-1", "test-cluster-instance-2"},
+			BackupRetentionPeriod:   7,
+			DeletionProtection:      true,
+			AutoMinorVersionUpgrade: true,
+		},
+	}
+}
+
 func createTestRDSSnapshotEvent() types.Event {
 	return types.Event{
 		ID:        "test-rds-snapshot",
@@ -447,7 +516,7 @@ func createTestAgentHealthEvent() types.Event {
 		Timestamp: time.Now(),
 		Source:    "test-source",
 		AgentHealth: &types.AgentHealthEvent{
-			AgentVersion:    "1.0.0",
+			AgentVersion:    version.Version(),
 			Status:          "healthy",
 			UptimeSeconds:   3600,
 			CollectorStates: map[string]string{"query_logs": "running"},

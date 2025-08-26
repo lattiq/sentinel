@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/lattiq/sentinel/pkg/types"
+	"github.com/lattiq/sentinel/version"
 )
 
 func TestNewMessageValidator(t *testing.T) {
@@ -39,7 +40,7 @@ func TestMessageValidator_ValidateRequiredFields(t *testing.T) {
 				Timestamp:   1234567890,
 				MessageType: types.MessageTypeQueryLogs,
 				Data:        map[string]interface{}{"test": "data"},
-				Version:     "1.0",
+				Version:     version.Version(),
 			},
 			wantErr: true,
 			errMsg:  "message_id is required",
@@ -51,7 +52,7 @@ func TestMessageValidator_ValidateRequiredFields(t *testing.T) {
 				Timestamp:   1234567890,
 				MessageType: types.MessageTypeQueryLogs,
 				Data:        map[string]interface{}{"test": "data"},
-				Version:     "1.0",
+				Version:     version.Version(),
 			},
 			wantErr: true,
 			errMsg:  "client_id is required",
@@ -63,7 +64,7 @@ func TestMessageValidator_ValidateRequiredFields(t *testing.T) {
 				ClientID:    "test-client",
 				MessageType: types.MessageTypeQueryLogs,
 				Data:        map[string]interface{}{"test": "data"},
-				Version:     "1.0",
+				Version:     version.Version(),
 			},
 			wantErr: true,
 			errMsg:  "timestamp is required",
@@ -75,7 +76,7 @@ func TestMessageValidator_ValidateRequiredFields(t *testing.T) {
 				ClientID:  "test-client",
 				Timestamp: 1234567890,
 				Data:      map[string]interface{}{"test": "data"},
-				Version:   "1.0",
+				Version:   version.Version(),
 			},
 			wantErr: true,
 			errMsg:  "message_type is required",
@@ -87,7 +88,7 @@ func TestMessageValidator_ValidateRequiredFields(t *testing.T) {
 				ClientID:    "test-client",
 				Timestamp:   1234567890,
 				MessageType: types.MessageTypeQueryLogs,
-				Version:     "1.0",
+				Version:     version.Version(),
 			},
 			wantErr: true,
 			errMsg:  "data is required",
@@ -152,7 +153,7 @@ func TestMessageValidator_ValidateMessageType(t *testing.T) {
 			Status:        "healthy",
 		},
 		types.MessageTypeAgentHealth: &types.AgentHealthEvent{
-			AgentVersion: "1.0.0",
+			AgentVersion: version.Version(),
 			Status:       "healthy",
 		},
 	}
@@ -399,7 +400,7 @@ func TestMessageValidator_ValidateAgentHealthData(t *testing.T) {
 		{
 			name: "valid agent health data",
 			data: &types.AgentHealthEvent{
-				AgentVersion: "1.0.0",
+				AgentVersion: version.Version(),
 				Status:       "healthy",
 			},
 			wantErr: false,
@@ -421,7 +422,7 @@ func TestMessageValidator_ValidateAgentHealthData(t *testing.T) {
 		{
 			name: "missing status",
 			data: &types.AgentHealthEvent{
-				AgentVersion: "1.0.0",
+				AgentVersion: version.Version(),
 			},
 			wantErr: true,
 			errMsg:  "status is required",
@@ -572,6 +573,6 @@ func createValidMonitoringMessage() types.MonitoringMessage {
 			"event_id":  "test-event",
 			"collector": "test-collector",
 		},
-		Version: "1.0",
+		Version: version.Version(),
 	}
 }

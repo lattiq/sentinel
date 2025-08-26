@@ -3,8 +3,8 @@ client:
   name: "${SENTINEL_CLIENT_NAME}"
   environment: "${SENTINEL_ENVIRONMENT:-production}"
 
-hub:
-  endpoint: "https://hub.lattiq.com/sentinel/api/v1/events/batch"
+watchtower:
+  endpoint: "https://api.lattiq.com"
   secret_key: "${SENTINEL_SECRET_KEY}"
   client_id: "101"
   timeout: 30s
@@ -30,9 +30,13 @@ data_sources:
     instances:
       - "${RDS_INSTANCE_NAME}"
     monitor_all_instances: false
+    clusters:
+      - "${AURORA_CLUSTER_NAME}"
+    monitor_all_clusters: false
     region: "${AWS_REGION:-us-east-1}"
     poll_intervals:
       instances: 15m
+      clusters: 15m
       config: 30m
       snapshots: 30m
       
@@ -43,11 +47,22 @@ data_sources:
     stream_name: ""
     event_names:
       - "CreateDBSnapshot"
+      - "CopyDBSnapshot"
+      - "ModifyDBSnapshotAttribute"
       - "RestoreDBInstanceFromDBSnapshot"
       - "RestoreDBInstanceToPointInTime"
       - "CreateDBInstanceReadReplica"
-      - "DeleteDBSnapshot"
       - "ModifyDBInstance"
+      - "CreateDBClusterSnapshot"
+      - "CopyDBClusterSnapshot"
+      - "ModifyDBClusterSnapshotAttribute"
+      - "RestoreDBClusterFromSnapshot"
+      - "RestoreDBClusterToPointInTime"
+      - "CreateDBClusterReadReplica"
+      - "ModifyDBCluster"
+      - "PromoteReadReplica"
+      - "StartExportTask"
+      - "CreateGlobalCluster"
     poll_interval: 5m
     lookback_time: 15m
 

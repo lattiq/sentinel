@@ -18,6 +18,7 @@ import (
 	"github.com/lattiq/sentinel/internal/processor"
 	"github.com/lattiq/sentinel/internal/transmitter"
 	"github.com/lattiq/sentinel/pkg/types"
+	"github.com/lattiq/sentinel/version"
 )
 
 // Agent represents the main Sentinel monitoring agent
@@ -72,7 +73,7 @@ func New(cfg *config.Config) (*Agent, error) {
 	}
 
 	// Create HTTP transmitter
-	httpTransmitter, err := transmitter.NewHTTPTransmitter(&cfg.Hub)
+	httpTransmitter, err := transmitter.NewHTTPTransmitter(&cfg.Watchtower)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("failed to create HTTP transmitter: %w", err)
@@ -203,6 +204,7 @@ func (a *Agent) runTransmissionPipeline() {
 
 		case messages := <-a.processedChan:
 			if err := a.transmitter.Send(a.ctx, messages); err != nil {
+				fmt.Println("Error transmitting messages:", err.Error())
 				a.logger.WithError(err).WithField("message_count", len(messages)).Error("Failed to transmit messages")
 			} else {
 				a.logger.WithField("message_count", len(messages)).Debug("Messages transmitted successfully")
@@ -235,7 +237,7 @@ func (a *Agent) runHealthMonitor() {
 				Timestamp: time.Now(),
 				Source:    "agent_health",
 				AgentHealth: &types.AgentHealthEvent{
-					AgentVersion:    "1.0.0",
+					AgentVersion:    version.Version(),
 					Status:          "healthy",
 					UptimeSeconds:   int64(time.Since(time.Now()).Seconds()),
 					CollectorStates: a.getCollectorStates(),
@@ -420,7 +422,7 @@ func (a *Agent) Stop() error {
 	return nil
 }
 
-// PushConfiguration pushes current configuration to the hub service
+// PushConfiguration pushes current configuration to the watchtower service
 func (a *Agent) PushConfiguration() error {
 	a.configMutex.Lock()
 	defer a.configMutex.Unlock()
@@ -463,7 +465,7 @@ func (a *Agent) PushConfiguration() error {
 			Timestamp:       time.Now().Unix(),
 			Metadata: map[string]interface{}{
 				"pushed_at":     time.Now().Format(time.RFC3339),
-				"agent_version": "1.0.0",
+				"agent_version": version.Version(),
 			},
 		},
 	}
@@ -474,7 +476,7 @@ func (a *Agent) PushConfiguration() error {
 		a.logger.WithFields(logrus.Fields{
 			"config_hash":      currentHash,
 			"changed_sections": changedSections,
-		}).Info("Configuration pushed to hub")
+		}).Info("Configuration pushed to watchtower")
 
 		// Update tracking fields
 		a.previousConfig = a.deepCopyConfig(a.config)
@@ -528,7 +530,7 @@ func (a *Agent) runConfigurationTracker() {
 // getConfigVersion generates a version string for the configuration
 func (a *Agent) getConfigVersion() string {
 	if a.configVersion == "" {
-		a.configVersion = fmt.Sprintf("v1.0.0-%d", time.Now().Unix())
+		a.configVersion = fmt.Sprintf("v%s-%d", version.Version(), time.Now().Unix())
 	}
 	return a.configVersion
 }

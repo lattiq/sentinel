@@ -11,6 +11,7 @@ import (
 
 	"github.com/lattiq/sentinel/internal/config"
 	"github.com/lattiq/sentinel/pkg/types"
+	"github.com/lattiq/sentinel/version"
 )
 
 func TestNewBatcher(t *testing.T) {
@@ -330,6 +331,6 @@ func createTestMonitoringMessage(id string) types.MonitoringMessage {
 		MessageType: types.MessageTypeQueryLogs,
 		BatchSize:   1,
 		Data:        map[string]interface{}{"test": "data"},
-		Version:     "1.0",
+		Version:     version.Version(),
 	}
 }

@@ -108,6 +108,7 @@ type EventType string
 const (
 	EventTypeQueryLog    EventType = "query_log"
 	EventTypeRDSInstance EventType = "rds_instance"
+	EventTypeRDSCluster  EventType = "rds_cluster"
 	EventTypeRDSConfig   EventType = "rds_config"
 	EventTypeRDSSnapshot EventType = "rds_snapshot"
 	EventTypeCloudTrail  EventType = "cloudtrail"

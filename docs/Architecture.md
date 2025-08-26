@@ -28,7 +28,7 @@ graph TB
     end
 
     subgraph "External Services"
-        LattIQService["LattIQ Service<br/>(Hub/Databridge)"]
+        LattIQService["LattIQ Service<br/>(Watchtower/Databridge)"]
     end
 
     %% Data flow connections
@@ -66,7 +66,7 @@ sequenceDiagram
     participant A as Agent<br/>(Main Orchestrator)
     participant EP as EventProcessor<br/>(Message Creation)
     participant HT as HTTPTransmitter<br/>(HMAC Auth)
-    participant LS as LattIQ Service<br/>(Hub/Databridge)
+    participant LS as LattIQ Service<br/>(Watchtower/Databridge)
 
     Note over C,LS: Event Processing Pipeline Flow
 
@@ -92,7 +92,7 @@ sequenceDiagram
     HT->>HT: Marshal JSON<br/>Compress (optional)
     HT->>HT: Add HMAC-SHA256<br/>signature header
 
-    HT->>+LS: POST /sentinel/api/v1/events/batch<br/>(HTTPS + HMAC Auth)
+    HT->>+LS: POST /watchtower/v1/events/batch<br/>(HTTPS + HMAC Auth)
     LS-->>-HT: 200 OK / Error Response
 
     alt Success

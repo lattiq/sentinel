@@ -14,10 +14,7 @@ import (
 
 	"github.com/lattiq/sentinel/internal/agent"
 	"github.com/lattiq/sentinel/internal/config"
-)
-
-const (
-	version = "1.0.0"
+	"github.com/lattiq/sentinel/version"
 )
 
 func main() {
@@ -29,7 +26,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("Sentinel Agent v%s\n", version)
+		fmt.Printf("Sentinel Agent v%s\n", version.Version())
 		os.Exit(0)
 	}
 
@@ -49,7 +46,7 @@ func main() {
 	setupLogging(cfg.Logging)
 
 	logger := logrus.WithFields(logrus.Fields{
-		"version": version,
+		"version": version.Version(),
 		"client":  cfg.Client.ID,
 	})
 

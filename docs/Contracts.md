@@ -392,7 +392,7 @@ type HealthIssue struct {
 
 ```
 Development: http://localhost:8080
-Production:  https://hub.lattiq.com
+Production:  https://api.lattiq.com
 ```
 
 ### Endpoints
@@ -438,7 +438,7 @@ Content-Type: application/json
 #### 2. Batch Event Ingestion
 
 ```http
-POST /sentinel/api/v1/events/batch
+POST /watchtower/v1/events/batch
 Content-Type: application/json
 ```
 

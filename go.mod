@@ -1,8 +1,6 @@
 module github.com/lattiq/sentinel
 
-go 1.22
-
-toolchain go1.24.3
+go 1.24.5
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.36.5
@@ -10,6 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.51.0
 	github.com/aws/aws-sdk-go-v2/service/rds v1.98.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.81.0
+	github.com/go-resty/resty/v2 v2.16.5
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.8.4
 	gopkg.in/yaml.v3 v3.0.1
@@ -33,5 +32,6 @@ require (
 	github.com/aws/smithy-go v1.22.4 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8 // indirect
+	golang.org/x/net v0.33.0 // indirect
+	golang.org/x/sys v0.28.0 // indirect
 )

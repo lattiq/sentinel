@@ -80,6 +80,32 @@ func TestCollector_extractResourceName(t *testing.T) {
 			expectedResult: "my-snapshot",
 		},
 		{
+			name: "extract dBClusterIdentifier",
+			requestParams: map[string]interface{}{
+				"dBClusterIdentifier": "my-aurora-cluster",
+				"dBInstanceIdentifier": "my-database",
+			},
+			eventName:      "CreateDBCluster",
+			expectedResult: "my-aurora-cluster",
+		},
+		{
+			name: "extract dBClusterSnapshotIdentifier",
+			requestParams: map[string]interface{}{
+				"dBClusterSnapshotIdentifier": "my-cluster-snapshot",
+				"dBClusterIdentifier":         "my-aurora-cluster",
+			},
+			eventName:      "CreateDBClusterSnapshot",
+			expectedResult: "my-cluster-snapshot",
+		},
+		{
+			name: "extract globalClusterIdentifier",
+			requestParams: map[string]interface{}{
+				"globalClusterIdentifier": "my-global-cluster",
+			},
+			eventName:      "CreateGlobalCluster",
+			expectedResult: "my-global-cluster",
+		},
+		{
 			name:           "no resource identifiers",
 			requestParams:  map[string]interface{}{"otherParam": "value"},
 			eventName:      "CreateDBSnapshot",

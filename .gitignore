@@ -1,35 +1,119 @@
-# Binaries for programs and plugins
+# Go build artifacts and modules
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
-
-# Test binary, built with 'go test -c'
 *.test
-
-# Output of the go coverage tool, specifically when used with LiteIDE
 *.out
-
-# Dependency directories (remove the comment below to include it)
-# vendor/
-
-# Go workspace file
 go.work
+go.work.sum
+vendor/
 
-# Environment variables
-.env
+# Go test coverage
+*.cover
+coverage.html
+coverage.out
+coverage.txt
+c.out
 
-# IDE specific files
-.vscode/
-.idea/
-.cursor/
+# Debug and profiling
+debug
+*.debug
+__debug_bin*
+*.pprof
+*.trace
+*.prof
 
-# OS generated files
+# Build directories
+build/
+dist/
+bin/
+target/
+out/
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# Logs
+*.log
+debug.log
+debug.txt
+
+# OS files
 .DS_Store
 .DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
-ehthumbs.db
-Thumbs.db
+*~
+.fuse_hidden*
+.Trash-*
+
+# IDEs and editors
+.idea/
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Environment and configuration
+.env
+.env.*
+!.env.example
+.envrc
+
+# Database files
+*.sqlite
+*.sqlite3
+*.sql
+*.dump
+*.backup
+*.db
+dump/
+backups/
+
+# Infrastructure and deployment
+docker-compose.override.yml
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraform/
+
+# Development and experimentation
+playground/
+sandbox/
+experiments/
+scratch/
+
+# Security and credentials
+secrets/
+*.secret
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
+credentials.json
+service-account.json
+*-credentials.json
+
+# AI and LLM tools
+.claude/
+.cursor/
+.aider*
+.codeium/
+.copilot/
+*.anthropic
+*.openai
+.ai-cache/
+llm-cache/
+CLAUDE.md
+

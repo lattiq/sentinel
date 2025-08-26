@@ -80,6 +80,7 @@ func (v *MessageValidator) validateMessageType(message types.MonitoringMessage) 
 	validTypes := []string{
 		types.MessageTypeQueryLogs,
 		types.MessageTypeRDSInstances,
+		types.MessageTypeRDSClusters,
 		types.MessageTypeRDSConfig,
 		types.MessageTypeRDSSnapshots,
 		types.MessageTypeCloudTrail,
@@ -105,6 +106,8 @@ func (v *MessageValidator) validateDataStructure(message types.MonitoringMessage
 		return v.validateQueryLogData(message.Data)
 	case types.MessageTypeRDSInstances:
 		return v.validateRDSInstanceData(message.Data)
+	case types.MessageTypeRDSClusters:
+		return v.validateRDSClusterData(message.Data)
 	case types.MessageTypeRDSConfig:
 		return v.validateRDSConfigData(message.Data)
 	case types.MessageTypeRDSSnapshots:
@@ -149,6 +152,28 @@ func (v *MessageValidator) validateRDSInstanceData(data interface{}) error {
 
 	if rdsEvent.Engine == "" {
 		return fmt.Errorf("engine is required for RDS instance events")
+	}
+
+	return nil
+}
+
+// validateRDSClusterData validates RDS cluster event data
+func (v *MessageValidator) validateRDSClusterData(data interface{}) error {
+	rdsEvent, ok := data.(*types.RDSClusterEvent)
+	if !ok {
+		return fmt.Errorf("data must be of type RDSClusterEvent")
+	}
+
+	if rdsEvent.ClusterID == "" {
+		return fmt.Errorf("cluster_id is required for RDS cluster events")
+	}
+
+	if rdsEvent.Status == "" {
+		return fmt.Errorf("status is required for RDS cluster events")
+	}
+
+	if rdsEvent.Engine == "" {
+		return fmt.Errorf("engine is required for RDS cluster events")
 	}
 
 	return nil

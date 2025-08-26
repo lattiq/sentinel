@@ -594,8 +594,13 @@ func (c *Collector) extractResourceName(requestParams map[string]interface{}, ev
 
 	// Common resource identifiers in priority order (most specific first)
 	resourceKeys := []string{
-		"dBSnapshotIdentifier", // Snapshots are more specific than instances
-		"dBClusterIdentifier",  // Clusters are specific
+		"dBClusterSnapshotIdentifier", // Cluster snapshots are most specific
+		"dBSnapshotIdentifier",        // Instance snapshots are more specific than instances
+		"dBClusterIdentifier",         // Aurora clusters are specific
+		"sourceDBClusterIdentifier",   // Source cluster for operations
+		"targetDBClusterIdentifier",   // Target cluster for operations  
+		"dBClusterEndpointIdentifier", // Cluster endpoints
+		"globalClusterIdentifier",     // Global clusters
 		"readReplicaDBInstanceIdentifier",
 		"sourceDBInstanceIdentifier",
 		"targetDBInstanceIdentifier",

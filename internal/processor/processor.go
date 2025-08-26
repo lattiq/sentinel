@@ -10,6 +10,7 @@ import (
 
 	"github.com/lattiq/sentinel/internal/config"
 	"github.com/lattiq/sentinel/pkg/types"
+	"github.com/lattiq/sentinel/version"
 )
 
 // EventProcessor implements the event processing pipeline
@@ -119,6 +120,8 @@ func (p *EventProcessor) processEvent(event types.Event) (*types.MonitoringMessa
 		return p.processQueryLogEvent(event)
 	case types.EventTypeRDSInstance:
 		return p.processRDSInstanceEvent(event)
+	case types.EventTypeRDSCluster:
+		return p.processRDSClusterEvent(event)
 	case types.EventTypeRDSConfig:
 		return p.processRDSConfigEvent(event)
 	case types.EventTypeRDSSnapshot:
@@ -158,6 +161,15 @@ func (p *EventProcessor) processRDSInstanceEvent(event types.Event) (*types.Moni
 	}
 
 	return p.createRDSInstanceMessage(event, event.RDSInstance)
+}
+
+// processRDSClusterEvent processes RDS cluster events
+func (p *EventProcessor) processRDSClusterEvent(event types.Event) (*types.MonitoringMessage, error) {
+	if event.RDSCluster == nil {
+		return nil, fmt.Errorf("RDS cluster event data is missing")
+	}
+
+	return p.createRDSClusterMessage(event, event.RDSCluster)
 }
 
 // processRDSConfigEvent processes RDS config events
@@ -229,7 +241,7 @@ func (p *EventProcessor) createQueryLogMessage(event types.Event, data interface
 			"collector":   "query_logs",
 			"environment": p.config.Client.Environment,
 		},
-		Version: "1.0",
+		Version: version.Version(),
 	}
 
 	return message, nil
@@ -251,7 +263,31 @@ func (p *EventProcessor) createRDSInstanceMessage(event types.Event, data *types
 			"instance_id": data.InstanceID,
 			"environment": p.config.Client.Environment,
 		},
-		Version: "1.0",
+		Version: version.Version(),
+	}
+
+	return message, nil
+}
+
+// createRDSClusterMessage creates a monitoring message for RDS cluster events
+func (p *EventProcessor) createRDSClusterMessage(event types.Event, data *types.RDSClusterEvent) (*types.MonitoringMessage, error) {
+	message := &types.MonitoringMessage{
+		MessageID:   p.generateMessageID(event),
+		ClientID:    p.config.Client.ID,
+		Timestamp:   event.Timestamp.Unix(),
+		MessageType: types.MessageTypeRDSClusters,
+		BatchSize:   1,
+		Data:        data,
+		Metadata: map[string]interface{}{
+			"source":      event.Source,
+			"event_id":    event.ID,
+			"collector":   "rds_clusters",
+			"cluster_id":  data.ClusterID,
+			"engine":      data.Engine,
+			"status":      data.Status,
+			"environment": p.config.Client.Environment,
+		},
+		Version: version.Version(),
 	}
 
 	return message, nil
@@ -273,7 +309,7 @@ func (p *EventProcessor) createRDSConfigMessage(event types.Event, data *types.R
 			"instance_id": data.InstanceID,
 			"environment": p.config.Client.Environment,
 		},
-		Version: "1.0",
+		Version: version.Version(),
 	}
 
 	return message, nil
@@ -296,7 +332,7 @@ func (p *EventProcessor) createRDSSnapshotMessage(event types.Event, data *types
 			"instance_id": data.InstanceID,
 			"environment": p.config.Client.Environment,
 		},
-		Version: "1.0",
+		Version: version.Version(),
 	}
 
 	return message, nil
@@ -318,7 +354,7 @@ func (p *EventProcessor) createCloudTrailMessage(event types.Event, data *types.
 			"event_name":  data.EventName,
 			"environment": p.config.Client.Environment,
 		},
-		Version: "1.0",
+		Version: version.Version(),
 	}
 
 	return message, nil
@@ -340,7 +376,7 @@ func (p *EventProcessor) createHealthMessage(event types.Event, data *types.Heal
 			"status":      data.Status,
 			"environment": p.config.Client.Environment,
 		},
-		Version: "1.0",
+		Version: version.Version(),
 	}
 
 	return message, nil
@@ -363,7 +399,7 @@ func (p *EventProcessor) createAgentHealthMessage(event types.Event, data *types
 			"status":        data.Status,
 			"environment":   p.config.Client.Environment,
 		},
-		Version: "1.0",
+		Version: version.Version(),
 	}
 
 	return message, nil
@@ -384,7 +420,7 @@ func (p *EventProcessor) createConfigMessage(event types.Event, data *types.Conf
 			"collector":   "config",
 			"environment": p.config.Client.Environment,
 		},
-		Version: "1.0",
+		Version: version.Version(),
 	}
 
 	return message, nil

@@ -344,10 +344,10 @@ func (c *Collector) initializeHealthCheckers() {
 		c.logger.Info("S3 health checker initialized")
 	}
 
-	// Hub Health Checker
-	hubChecker := NewHubHealthChecker(c.config)
-	c.checkers = append(c.checkers, hubChecker)
-	c.logger.Info("Hub health checker initialized")
+	// Watchtower Health Checker
+	watchtowerChecker := NewWatchtowerHealthChecker(c.config)
+	c.checkers = append(c.checkers, watchtowerChecker)
+	c.logger.Info("Watchtower health checker initialized")
 
 	c.logger.WithField("checker_count", len(c.checkers)).Info("All health checkers initialized")
 }

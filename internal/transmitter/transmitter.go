@@ -2,34 +2,36 @@ package transmitter
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
+	"net/url"
+	"path"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/go-resty/resty/v2"
 	"github.com/sirupsen/logrus"
 
 	"github.com/lattiq/sentinel/internal/config"
+	"github.com/lattiq/sentinel/internal/hmac"
 	"github.com/lattiq/sentinel/pkg/types"
+	"github.com/lattiq/sentinel/version"
 )
 
-// HTTPTransmitter handles secure transmission of monitoring messages
+// HTTPTransmitter handles secure transmission of monitoring messages using resty
 type HTTPTransmitter struct {
-	config     *config.HubConfig
-	httpClient *http.Client
-	logger     *logrus.Entry
+	config   *config.WatchtowerConfig
+	client   *resty.Client
+	logger   *logrus.Entry
+	hmacAuth *hmac.Authenticator
 
-	// Retry mechanism
+	// Retry configuration
 	retryConfig *RetryConfig
 
-	// Metrics
+	// Metrics - integrated directly for simplicity
 	mu               sync.RWMutex
 	totalRequests    int64
 	successfulSends  int64
@@ -48,8 +50,8 @@ type RetryConfig struct {
 	RetryableErrors []int // HTTP status codes that should be retried
 }
 
-// NewHTTPTransmitter creates a new HTTP transmitter
-func NewHTTPTransmitter(config *config.HubConfig) (*HTTPTransmitter, error) {
+// NewHTTPTransmitter creates a new HTTP transmitter using resty
+func NewHTTPTransmitter(config *config.WatchtowerConfig) (*HTTPTransmitter, error) {
 	if config == nil {
 		return nil, fmt.Errorf("transmission configuration is required")
 	}
@@ -59,10 +61,21 @@ func NewHTTPTransmitter(config *config.HubConfig) (*HTTPTransmitter, error) {
 		"endpoint":  config.Endpoint,
 	})
 
-	// Create HTTP client with timeout
-	httpClient := &http.Client{
-		Timeout: config.Timeout,
-	}
+	// Create resty client with timeout and retry configuration
+	client := resty.New().
+		SetTimeout(config.Timeout).
+		SetRetryCount(3).
+		SetRetryWaitTime(time.Second).
+		SetRetryMaxWaitTime(30 * time.Second).
+		AddRetryCondition(func(r *resty.Response, err error) bool {
+			// Retry on network errors
+			if err != nil {
+				return true
+			}
+			// Retry on server errors and rate limiting
+			statusCode := r.StatusCode()
+			return statusCode >= 500 || statusCode == 429
+		})
 
 	// Default retry configuration
 	retryConfig := &RetryConfig{
@@ -73,14 +86,18 @@ func NewHTTPTransmitter(config *config.HubConfig) (*HTTPTransmitter, error) {
 		RetryableErrors: []int{500, 502, 503, 504, 429}, // Server errors and rate limiting
 	}
 
+	// Create HMAC authenticator
+	hmacAuth := hmac.NewHMACAuthenticator(&config.HMAC)
+
 	transmitter := &HTTPTransmitter{
 		config:      config,
-		httpClient:  httpClient,
+		client:      client,
 		logger:      logger,
+		hmacAuth:    hmacAuth,
 		retryConfig: retryConfig,
 	}
 
-	logger.Info("HTTP transmitter created")
+	logger.Info("HTTP transmitter created with resty")
 	return transmitter, nil
 }
 
@@ -92,6 +109,9 @@ func (t *HTTPTransmitter) Send(ctx context.Context, messages []types.MonitoringM
 
 	t.logger.WithField("message_count", len(messages)).Debug("Sending messages")
 	startTime := time.Now()
+
+	// Record request attempt
+	t.recordRequest()
 
 	// Create batch payload
 	batchPayload := types.BatchPayload{
@@ -108,177 +128,129 @@ func (t *HTTPTransmitter) Send(ctx context.Context, messages []types.MonitoringM
 	// Serialize payload
 	payload, err := json.Marshal(batchPayload)
 	if err != nil {
+		t.recordFailure()
 		return fmt.Errorf("failed to marshal batch payload: %w", err)
 	}
 
-	// Compress payload if configured
-	if t.config.Compression {
-		payload, err = t.compressPayload(payload)
-		if err != nil {
-			return fmt.Errorf("failed to compress payload: %w", err)
-		}
-	}
+	// Send request with uncompressed payload for HMAC signature calculation
+	// Compression will be handled by resty if Content-Encoding header is set
+	err = t.sendRequest(ctx, payload)
 
-	// Send with retry logic
-	err = t.sendWithRetry(ctx, payload)
+	responseTime := time.Since(startTime)
 
-	// Update metrics
-	t.updateMetrics(startTime, err == nil)
-
-	return err
-}
-
-// sendWithRetry sends the payload with exponential backoff retry
-func (t *HTTPTransmitter) sendWithRetry(ctx context.Context, payload []byte) error {
-	var lastErr error
-	delay := t.retryConfig.InitialDelay
-
-	for attempt := 0; attempt <= t.retryConfig.MaxRetries; attempt++ {
-		if attempt > 0 {
-			t.logger.WithFields(logrus.Fields{
-				"attempt": attempt,
-				"delay":   delay,
-			}).Debug("Retrying transmission")
-
-			// Wait before retry
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(delay):
-			}
-
-			t.retriedRequests++
-		}
-
-		err := t.sendRequest(ctx, payload)
-		if err == nil {
-			if attempt > 0 {
-				t.logger.WithField("attempts", attempt+1).Info("Transmission succeeded after retries")
-			}
-			return nil
-		}
-
-		lastErr = err
-
-		// Check if error is retryable
-		if !t.shouldRetry(err) {
-			t.logger.WithError(err).Warn("Non-retryable error, not retrying")
-			break
-		}
-
-		// Calculate next delay with exponential backoff
-		delay = time.Duration(float64(delay) * t.retryConfig.BackoffFactor)
-		if delay > t.retryConfig.MaxDelay {
-			delay = t.retryConfig.MaxDelay
-		}
-	}
-
-	return fmt.Errorf("transmission failed after %d attempts: %w", t.retryConfig.MaxRetries+1, lastErr)
-}
-
-// sendRequest sends a single HTTP request
-func (t *HTTPTransmitter) sendRequest(ctx context.Context, payload []byte) error {
-	// Create request
-	req, err := http.NewRequestWithContext(ctx, "POST", t.config.Endpoint, bytes.NewReader(payload))
+	// Record success or failure
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		t.recordFailure()
+		t.logger.WithError(err).Error("Failed to send messages")
+		return fmt.Errorf("failed to send request: %w", err)
 	}
 
-	// Set headers
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "lattiq-sentinel/1.0")
+	t.recordSuccess(responseTime)
+	t.logger.WithFields(logrus.Fields{
+		"message_count": len(messages),
+		"response_time": responseTime,
+	}).Debug("Successfully sent messages")
 
-	if t.config.Compression {
-		req.Header.Set("Content-Encoding", "gzip")
-	}
-
-	// Generate HMAC signature
-	signature, err := t.generateHMACSignature(payload)
-	if err != nil {
-		return fmt.Errorf("failed to generate HMAC signature: %w", err)
-	}
-	req.Header.Set("X-Signature", signature)
-
-	// Add timestamp header
-	req.Header.Set("X-Timestamp", strconv.FormatInt(time.Now().Unix(), 10))
-
-	// Add client ID header
-	if t.config.ClientID != "" {
-		req.Header.Set("X-Client-ID", t.config.ClientID)
-	}
-
-	// Send request
-	t.totalRequests++
-	resp, err := t.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("HTTP request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Check response status
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return &HTTPError{
-			StatusCode: resp.StatusCode,
-			Message:    string(body),
-		}
-	}
-
-	t.logger.WithField("status_code", resp.StatusCode).Debug("Request successful")
 	return nil
 }
 
-// generateHMACSignature generates HMAC-SHA256 signature for the payload
-func (t *HTTPTransmitter) generateHMACSignature(payload []byte) (string, error) {
-	if t.config.SecretKey == "" {
-		return "", fmt.Errorf("secret key is required for HMAC signature")
+// sendRequest sends a single HTTP request using resty
+func (t *HTTPTransmitter) sendRequest(ctx context.Context, payload []byte) error {
+	// Generate HMAC signature on the uncompressed payload
+	timestamp := time.Now().Unix()
+
+	// Use the correct path from the endpoint URL
+	apiPath := "/watchtower/v1/events/batch"
+	if t.config.Endpoint != "" {
+		relativePathFromEndpoint, err := extractPath(t.config.Endpoint)
+		if err != nil {
+			return fmt.Errorf("failed to extract path from endpoint: %w", err)
+		}
+		apiPath = path.Join(relativePathFromEndpoint, apiPath)
 	}
 
-	mac := hmac.New(sha256.New, []byte(t.config.SecretKey))
-	mac.Write(payload)
-	signature := hex.EncodeToString(mac.Sum(nil))
+	signature, err := t.hmacAuth.GenerateSignature("POST", apiPath, payload, timestamp)
+	if err != nil {
+		return fmt.Errorf("failed to generate HMAC signature: %w", err)
+	}
 
-	return signature, nil
+	// Compress payload after signature calculation if configured
+	requestPayload := payload
+	if t.config.Compression {
+		compressedPayload, err := t.compressPayload(payload)
+		if err != nil {
+			return fmt.Errorf("failed to compress payload: %w", err)
+		}
+		requestPayload = compressedPayload
+	}
+
+	// Prepare request
+	request := t.client.R().
+		SetContext(ctx).
+		SetHeader("Content-Type", "application/json").
+		SetHeader("User-Agent", fmt.Sprintf("lattiq-sentinel/%s", version.Version())).
+		SetHeader(t.config.HMAC.HeaderName, signature).
+		SetHeader(t.config.HMAC.TimestampHeader, strconv.FormatInt(timestamp, 10)).
+		SetBody(requestPayload)
+
+	// Set compression header if payload was compressed
+	if t.config.Compression {
+		request.SetHeader("Content-Encoding", "gzip")
+	}
+
+	// Add client ID header
+	if t.config.ClientID != "" {
+		request.SetHeader("X-Client-ID", t.config.ClientID)
+	}
+
+	// Send request
+	resp, err := request.Post(t.config.Endpoint + apiPath)
+	if err != nil {
+		return fmt.Errorf("HTTP request failed: %w", err)
+	}
+
+	// Check response status
+	if !resp.IsSuccess() {
+		return &HTTPError{
+			StatusCode: resp.StatusCode(),
+			Message:    string(resp.Body()),
+		}
+	}
+
+	t.logger.WithField("status_code", resp.StatusCode()).Debug("Request successful")
+	return nil
 }
 
 // compressPayload compresses the payload using gzip
 func (t *HTTPTransmitter) compressPayload(payload []byte) ([]byte, error) {
-	// For now, return as-is. In production, implement gzip compression
-	// This would use gzip.Writer to compress the payload
-	return payload, nil
-}
+	var buf bytes.Buffer
+	gzWriter := gzip.NewWriter(&buf)
 
-// shouldRetry determines if an error should trigger a retry
-func (t *HTTPTransmitter) shouldRetry(err error) bool {
-	httpErr, ok := err.(*HTTPError)
-	if !ok {
-		// Network errors and other non-HTTP errors should be retried
-		return true
+	_, err := gzWriter.Write(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write to gzip writer: %w", err)
 	}
 
-	// Check if status code is in retryable list
-	for _, retryableCode := range t.retryConfig.RetryableErrors {
-		if httpErr.StatusCode == retryableCode {
-			return true
-		}
+	err = gzWriter.Close()
+	if err != nil {
+		return nil, fmt.Errorf("failed to close gzip writer: %w", err)
 	}
 
-	return false
+	return buf.Bytes(), nil
 }
 
-// updateMetrics updates transmission metrics
-func (t *HTTPTransmitter) updateMetrics(startTime time.Time, success bool) {
+// Metrics methods
+func (t *HTTPTransmitter) recordRequest() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.totalRequests++
+}
+
+func (t *HTTPTransmitter) recordSuccess(responseTime time.Duration) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	responseTime := time.Since(startTime)
-
-	if success {
-		t.successfulSends++
-	} else {
-		t.failedSends++
-	}
-
+	t.successfulSends++
 	t.lastTransmitTime = time.Now()
 
 	// Update average response time (simple moving average)
@@ -287,6 +259,18 @@ func (t *HTTPTransmitter) updateMetrics(startTime time.Time, success bool) {
 	} else {
 		t.avgResponseTime = (t.avgResponseTime + responseTime) / 2
 	}
+}
+
+func (t *HTTPTransmitter) recordFailure() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.failedSends++
+}
+
+func (t *HTTPTransmitter) recordRetry() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.retriedRequests++
 }
 
 // GetMetrics returns transmission metrics
@@ -318,4 +302,12 @@ type HTTPError struct {
 
 func (e *HTTPError) Error() string {
 	return fmt.Sprintf("HTTP %d: %s", e.StatusCode, e.Message)
+}
+
+func extractPath(endpoint string) (string, error) {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return "", err
+	}
+	return u.Path, nil
 }
